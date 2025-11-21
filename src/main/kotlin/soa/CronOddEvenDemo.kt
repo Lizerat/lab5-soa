@@ -27,9 +27,6 @@ private val logger = LoggerFactory.getLogger("soa.CronOddEvenDemo")
  * Spring Integration configuration for demonstrating Enterprise Integration Patterns.
  * This application implements a message flow that processes numbers and routes them
  * based on whether they are even or odd.
- *
- * **Your Task**: Analyze this configuration, create an EIP diagram, and compare it
- * with the target diagram to identify and fix any issues.
  */
 @SpringBootApplication
 @EnableIntegration
@@ -44,18 +41,14 @@ class IntegrationApplication(
     fun integerSource(): AtomicInteger = AtomicInteger()
 
     /**
-     * Defines a publish-subscribe channel for even numbers.
+     * Defines a publish-subscribe channel for odd numbers.
      * Multiple subscribers can receive messages from this channel.
      */
     @Bean
-    fun evenChannel(): PublishSubscribeChannelSpec<*> = MessageChannels.publishSubscribe()
+    fun oddChannel(): PublishSubscribeChannelSpec<*> = MessageChannels.publishSubscribe()
 
-    /**
-     * Main integration flow that polls the integer source and routes messages.
-     * Polls every 100ms and routes based on even/odd logic.
-     */
     @Bean
-    fun myFlow(integerSource: AtomicInteger): IntegrationFlow =
+    fun integerFlow(integerSource: AtomicInteger): IntegrationFlow =
         integrationFlow(
             source = { integerSource.getAndIncrement() },
             options = { poller(Pollers.fixedRate(100)) },
@@ -64,6 +57,19 @@ class IntegrationApplication(
                 logger.info("📥 Source generated number: {}", num)
                 num
             }
+            route { p: Int ->
+                val channel = "numberChannel"
+                channel
+            }
+        }
+
+    /**
+     * Main integration flow that routes numerical messages.
+     * Routes based on even/odd logic.
+     */
+    @Bean
+    fun myFlow(integerSource: AtomicInteger): IntegrationFlow =
+        integrationFlow("numberChannel") {
             route { p: Int ->
                 val channel = if (p % 2 == 0) "evenChannel" else "oddChannel"
                 logger.info("🔀 Router: {} → {}", p, channel)
@@ -89,34 +95,17 @@ class IntegrationApplication(
 
     /**
      * Integration flow for processing odd numbers.
-     * Applies a filter before transformation and logging.
-     * Note: Examine the filter condition carefully.
+     * Transforms integers to strings and logs the result.
      */
     @Bean
     fun oddFlow(): IntegrationFlow =
         integrationFlow("oddChannel") {
-            filter { p: Int ->
-                val passes = p % 2 == 0
-                logger.info("  🔍 Odd Filter: checking {} → {}", p, if (passes) "PASS" else "REJECT")
-                passes
-            } // , { discardChannel("discardChannel") })
             transform { obj: Int ->
                 logger.info("  ⚙️  Odd Transformer: {} → 'Number {}'", obj, obj)
                 "Number $obj"
             }
             handle { p ->
                 logger.info("  ✅ Odd Handler: Processed [{}]", p.payload)
-            }
-        }
-
-    /**
-     * Integration flow for handling discarded messages.
-     */
-    @Bean
-    fun discarded(): IntegrationFlow =
-        integrationFlow("discardChannel") {
-            handle { p ->
-                logger.info("  🗑️  Discard Handler: [{}]", p.payload)
             }
         }
 
@@ -146,11 +135,10 @@ class SomeService {
 /**
  * Messaging Gateway for sending numbers into the integration flow.
  * This provides a simple interface to inject messages into the system.
- * Note: Check which channel this gateway sends messages to.
  */
 @MessagingGateway
 interface SendNumber {
-    @Gateway(requestChannel = "evenChannel")
+    @Gateway(requestChannel = "numberChannel")
     fun sendNumber(number: Int)
 }
 
